@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import API from '../services/api';
-import { Camera, Check, Loader2, Trash2, Plus, X } from 'lucide-react';
+import { Camera, Check, Loader2, Trash2, Plus, X, Image as ImageIcon } from 'lucide-react';
 
 const ScanReceipt = () => {
   const [file, setFile] = useState(null);
@@ -87,21 +87,41 @@ const ScanReceipt = () => {
       {!result ? (
         <div className="flex flex-col items-center p-6 sm:p-12 border-4 border-dashed border-blue-100 rounded-3xl bg-blue-50/30">
           {!previewUrl ? (
-            <>
-              <input 
-                type="file" 
-                id="file-upload"
-                accept="image/*"
-                capture="environment"
-                onChange={(e) => setFile(e.target.files[0])} 
-                className="hidden"
-              />
-              <label htmlFor="file-upload" className="cursor-pointer bg-white p-6 rounded-full shadow-md mb-4 hover:scale-105 transition-transform flex flex-col items-center gap-2">
-                 <Plus size={40} className="text-blue-600"/>
-                 <span className="text-sm font-bold text-blue-600">צלם או בחר תמונה</span>
-              </label>
-            </>
+            <div className="grid grid-cols-2 gap-6 w-full max-w-sm">
+              {/* כפתור מצלמה */}
+              <div className="flex flex-col items-center gap-2">
+                <input 
+                  type="file" 
+                  id="camera-upload"
+                  accept="image/*"
+                  capture="environment" // פותח מצלמה ישירות
+                  onChange={(e) => setFile(e.target.files[0])} 
+                  className="hidden"
+                />
+                <label htmlFor="camera-upload" className="cursor-pointer bg-blue-600 p-6 rounded-2xl shadow-lg hover:bg-blue-700 transition-all flex items-center justify-center text-white">
+                   <Camera size={40} />
+                </label>
+                <span className="text-sm font-bold text-gray-600">צלם קבלה</span>
+              </div>
+
+              {/* כפתור גלריה */}
+              <div className="flex flex-col items-center gap-2">
+                <input 
+                  type="file" 
+                  id="gallery-upload"
+                  accept="image/*"
+                  // בלי capture - פותח את הגלריה
+                  onChange={(e) => setFile(e.target.files[0])} 
+                  className="hidden"
+                />
+                <label htmlFor="gallery-upload" className="cursor-pointer bg-white p-6 rounded-2xl shadow-lg hover:bg-gray-50 transition-all flex items-center justify-center text-blue-600 border-2 border-blue-100">
+                   <ImageIcon size={40} />
+                </label>
+                <span className="text-sm font-bold text-gray-600">מהגלריה</span>
+              </div>
+            </div>
           ) : (
+            /* תצוגה מקדימה (נשאר זהה) */
             <div className="w-full flex flex-col items-center">
               <div className="relative w-full max-w-sm aspect-[3/4] mb-6 rounded-2xl overflow-hidden shadow-lg border-2 sm:border-4 border-white">
                 <img src={previewUrl} alt="תצוגה מקדימה" className="w-full h-full object-cover" />
@@ -132,12 +152,13 @@ const ScanReceipt = () => {
           )}
         </div>
       ) : (
+        /* תוצאות הסריקה (נשאר זהה) */
         <div className="space-y-6 animate-in fade-in duration-500">
+           {/* ... החלק של הצגת המוצרים והעריכה ... */}
            <div className="bg-green-50 p-3 rounded-xl border border-green-200 text-green-700 font-bold text-center text-sm sm:text-base">
              ✅ הסריקה הושלמה!
            </div>
            
-           {/* פרטי חנות - עובר לטור אחד בטלפונים */}
            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 sm:p-6 bg-gray-50 rounded-2xl border border-gray-200">
             <div>
               <label className="block text-xs font-bold text-gray-500 mb-1">שם הרשת</label>
@@ -165,15 +186,12 @@ const ScanReceipt = () => {
 
             {result.items.map((item, idx) => (
               <div key={idx} className="flex flex-col sm:flex-row gap-2 sm:gap-3 bg-white p-3 rounded-2xl border border-gray-100 shadow-sm relative group">
-                {/* שם המוצר - תופס שורה שלמה במידת הצורך */}
                 <input 
                   className="flex-1 p-2 bg-gray-50 rounded-lg outline-none focus:bg-blue-50 transition-colors text-sm font-medium min-w-0"
                   value={item.name}
                   onChange={(e) => handleItemChange(idx, 'name', e.target.value)}
                   placeholder="שם המוצר"
                 />
-                
-                {/* אזור מחיר ומחיקה - נצמדים בטלפון */}
                 <div className="flex items-center gap-2 justify-between sm:justify-end">
                   <div className="relative">
                     <input 
@@ -184,12 +202,7 @@ const ScanReceipt = () => {
                     />
                     <span className="absolute left-2 top-2 text-[10px] text-gray-400 uppercase">ILS</span>
                   </div>
-                  
-                  <button 
-                    onClick={() => removeItem(idx)} 
-                    className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors shrink-0"
-                    aria-label="מחק מוצר"
-                  >
+                  <button onClick={() => removeItem(idx)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors shrink-0">
                     <Trash2 size={18} />
                   </button>
                 </div>
@@ -197,18 +210,11 @@ const ScanReceipt = () => {
             ))}
           </div>
 
-          {/* כפתורי פעולה סופיים - נערמים בטלפון */}
           <div className="flex flex-col sm:flex-row gap-3 mt-8">
-            <button 
-              onClick={handleConfirm}
-              className="flex-1 bg-green-600 hover:bg-green-700 text-white py-4 rounded-2xl font-extrabold text-lg shadow-lg flex items-center justify-center gap-2 order-1 sm:order-2"
-            >
+            <button onClick={handleConfirm} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-4 rounded-2xl font-extrabold text-lg shadow-lg flex items-center justify-center gap-2 order-1 sm:order-2">
               <Check size={22} /> שמור במערכת
             </button>
-            <button 
-              onClick={() => setResult(null)}
-              className="py-4 px-6 bg-gray-100 text-gray-500 rounded-2xl font-bold hover:bg-gray-200 order-2 sm:order-1"
-            >
+            <button onClick={() => setResult(null)} className="py-4 px-6 bg-gray-100 text-gray-500 rounded-2xl font-bold hover:bg-gray-200 order-2 sm:order-1">
               ביטול
             </button>
           </div>
