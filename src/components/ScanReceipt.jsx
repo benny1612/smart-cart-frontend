@@ -1,13 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import API from '../services/api';
-import { Camera, Check, Loader2, Trash2, Plus, X, Image as ImageIcon } from 'lucide-react';
+import { Camera, Check, Loader2, Trash2, Plus, X, Image as ImageIcon, RotateCcw } from 'lucide-react';
 
 const ScanReceipt = () => {
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+  
+  // States ו-Refs למצלמה פנימית
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [showFlash, setShowFlash] = useState(false);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const [stream, setStream] = useState(null);
 
+  // ניהול תצוגה מקדימה כשקובץ משתנה
   useEffect(() => {
     if (!file) {
       setPreviewUrl(null);
@@ -18,6 +26,73 @@ const ScanReceipt = () => {
     return () => URL.revokeObjectURL(objectUrl);
   }, [file]);
 
+  // מנקה את המצלמה אם עוזבים את הדף
+  useEffect(() => {
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [stream]);
+
+  // פונקציה: פתיחת מצלמה
+  const startCamera = async () => {
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      });
+      setStream(mediaStream);
+      setIsCameraActive(true);
+      
+      // נותנים ל-DOM שניה להתרנדר לפני שמחברים את הוידאו
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = mediaStream;
+        }
+      }, 100);
+    } catch (err) {
+      alert("שגיאה: לא ניתן לגשת למצלמה. וודא שאתה בחיבור מאובטח (HTTPS) ושנתת הרשאות.");
+      console.error(err);
+    }
+  };
+
+  // פונקציה: סגירת מצלמה
+  const stopCamera = () => {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+    }
+    setStream(null);
+    setIsCameraActive(false);
+  };
+
+  // פונקציה: צילום התמונה מתוך הוידאו
+  const capturePhoto = () => {
+    if (videoRef.current && canvasRef.current) {
+      // הפעלת אפקט הפלאש
+      setShowFlash(true);
+      
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      const context = canvas.getContext('2d');
+      
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      canvas.toBlob((blob) => {
+        const capturedFile = new File([blob], "captured_receipt.jpg", { type: "image/jpeg" });
+        
+        // השהייה קטנה כדי שהמשתמש יראה את הפלאש לפני שהמצלמה נסגרת
+        setTimeout(() => {
+          setFile(capturedFile);
+          setShowFlash(false);
+          stopCamera();
+        }, 150);
+      }, 'image/jpeg', 0.9);
+    }
+  };
+
   const handleUpload = async () => {
     if (!file) return;
     setLoading(true);
@@ -27,25 +102,23 @@ const ScanReceipt = () => {
       const { data } = await API.post('/receipts/scan', formData);
       setResult(data);
     } catch (err) {
-      alert("סריקה נכשלה");
+      alert("סריקה נכשלה, נסה שנית.");
     } finally {
       setLoading(false);
     }
   };
 
+  // פונקציות עריכת טבלה
   const handleStoreChange = (field, value) => setResult({ ...result, [field]: value });
-  
   const handleItemChange = (index, field, value) => {
     const newItems = [...result.items];
     newItems[index][field] = value;
     setResult({ ...result, items: newItems });
   };
-
   const removeItem = (index) => {
     const newItems = result.items.filter((_, i) => i !== index);
     setResult({ ...result, items: newItems });
   };
-
   const addItem = () => setResult({ ...result, items: [...result.items, { name: "", price: 0 }] });
 
   const handleConfirm = async () => {
@@ -62,22 +135,10 @@ const ScanReceipt = () => {
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-6 bg-white shadow-2xl rounded-3xl mt-4 sm:mt-10" dir="rtl">
       <style>{`
-        @keyframes scan {
-          0% { top: 0%; opacity: 0; }
-          10% { opacity: 1; }
-          90% { opacity: 1; }
-          100% { top: 100%; opacity: 0; }
-        }
-        .scanner-line {
-          position: absolute;
-          left: 0;
-          width: 100%;
-          height: 4px;
-          background: linear-gradient(to bottom, transparent, #3b82f6, transparent);
-          box-shadow: 0px 0px 15px 2px #3b82f6;
-          z-index: 10;
-          animation: scan 2s linear infinite;
-        }
+        @keyframes scan { 0% { top: 0%; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
+        .scanner-line { position: absolute; left: 0; width: 100%; height: 4px; background: #3b82f6; box-shadow: 0px 0px 15px 2px #3b82f6; z-index: 10; animation: scan 2s linear infinite; }
+        .flash-effect { position: absolute; inset: 0; background-color: white; z-index: 50; animation: flash-fade 0.2s ease-out forwards; pointer-events: none; }
+        @keyframes flash-fade { 0% { opacity: 1; } 100% { opacity: 0; } }
       `}</style>
 
       <h2 className="text-2xl sm:text-3xl font-extrabold mb-6 text-gray-800 flex items-center gap-3">
@@ -85,76 +146,112 @@ const ScanReceipt = () => {
       </h2>
 
       {!result ? (
-        <div className="flex flex-col items-center p-6 sm:p-12 border-4 border-dashed border-blue-100 rounded-3xl bg-blue-50/30">
-          {!previewUrl ? (
+        <div className="flex flex-col items-center p-6 sm:p-12 border-4 border-dashed border-blue-100 rounded-3xl bg-blue-50/30 min-h-[400px] justify-center">
+          
+          {/* מצב 1: בחירת אמצעי צילום */}
+          {!isCameraActive && !previewUrl && (
             <div className="grid grid-cols-2 gap-6 w-full max-w-sm">
-              {/* כפתור מצלמה */}
               <div className="flex flex-col items-center gap-2">
-                <input 
-                  type="file" 
-                  id="camera-upload"
-                  accept="image/*"
-                  capture="environment" // פותח מצלמה ישירות
-                  onChange={(e) => setFile(e.target.files[0])} 
-                  className="hidden"
-                />
-                <label htmlFor="camera-upload" className="cursor-pointer bg-blue-600 p-6 rounded-2xl shadow-lg hover:bg-blue-700 transition-all flex items-center justify-center text-white">
+                <button 
+                  onClick={startCamera} 
+                  className="bg-blue-600 p-6 rounded-2xl shadow-lg hover:bg-blue-700 transition-all flex items-center justify-center text-white active:scale-95 w-full aspect-square"
+                >
                    <Camera size={40} />
-                </label>
-                <span className="text-sm font-bold text-gray-600">צלם קבלה</span>
+                </button>
+                <span className="text-sm font-bold text-gray-600">פתח מצלמה</span>
               </div>
 
-              {/* כפתור גלריה */}
               <div className="flex flex-col items-center gap-2">
                 <input 
                   type="file" 
-                  id="gallery-upload"
-                  accept="image/*"
-                  // בלי capture - פותח את הגלריה
+                  id="gallery-upload" 
+                  accept="image/*" 
                   onChange={(e) => setFile(e.target.files[0])} 
-                  className="hidden"
+                  className="hidden" 
                 />
-                <label htmlFor="gallery-upload" className="cursor-pointer bg-white p-6 rounded-2xl shadow-lg hover:bg-gray-50 transition-all flex items-center justify-center text-blue-600 border-2 border-blue-100">
+                <label 
+                  htmlFor="gallery-upload" 
+                  className="cursor-pointer bg-white p-6 rounded-2xl shadow-lg hover:bg-gray-50 transition-all flex items-center justify-center text-blue-600 border-2 border-blue-100 active:scale-95 w-full aspect-square"
+                >
                    <ImageIcon size={40} />
                 </label>
                 <span className="text-sm font-bold text-gray-600">מהגלריה</span>
               </div>
             </div>
-          ) : (
-            /* תצוגה מקדימה (נשאר זהה) */
+          )}
+
+          {/* מצב 2: מצלמה חיה בתוך האתר */}
+          {isCameraActive && (
+            <div className="w-full max-w-sm flex flex-col items-center">
+              <div className="relative w-full aspect-[3/4] rounded-2xl overflow-hidden shadow-2xl bg-black border-4 border-white">
+                <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                
+                {/* אפקט פלאש */}
+                {showFlash && <div className="flash-effect"></div>}
+                
+                {/* כוונת הדרכה */}
+                <div className="absolute inset-0 flex flex-col justify-between p-4 pointer-events-none">
+                  <div className="bg-black/60 text-white text-[11px] p-2 rounded-lg text-center backdrop-blur-sm mx-auto">
+                    יישר את הקבלה למרכז המסגרת
+                  </div>
+                  <div className="flex-1 flex items-center justify-center p-6">
+                    <div className="w-full h-full border-2 border-dashed border-white/40 rounded-lg relative">
+                      <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-blue-500"></div>
+                      <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-blue-500"></div>
+                      <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-blue-500"></div>
+                      <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-blue-500"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* כפתורי שליטה במצלמה */}
+              <div className="flex gap-6 mt-6 items-center">
+                <button 
+                  onClick={stopCamera} 
+                  className="bg-gray-200 text-gray-700 p-4 rounded-full hover:bg-gray-300 transition-colors"
+                >
+                  <X size={24} />
+                </button>
+                <button 
+                  onClick={capturePhoto} 
+                  className="bg-blue-600 text-white p-5 rounded-full shadow-lg border-4 border-blue-100 active:scale-90 transition-transform"
+                >
+                  <Camera size={32} />
+                </button>
+              </div>
+              <canvas ref={canvasRef} className="hidden" />
+            </div>
+          )}
+
+          {/* מצב 3: תצוגה מקדימה לפני שליחה ל-AI */}
+          {previewUrl && !isCameraActive && (
             <div className="w-full flex flex-col items-center">
-              <div className="relative w-full max-w-sm aspect-[3/4] mb-6 rounded-2xl overflow-hidden shadow-lg border-2 sm:border-4 border-white">
+              <div className="relative w-full max-w-sm aspect-[3/4] mb-6 rounded-2xl overflow-hidden shadow-lg border-4 border-white">
                 <img src={previewUrl} alt="תצוגה מקדימה" className="w-full h-full object-cover" />
-                {loading && (
-                  <>
-                    <div className="absolute inset-0 bg-blue-900/20 z-0"></div>
-                    <div className="scanner-line"></div>
-                  </>
-                )}
+                {loading && <div className="scanner-line"></div>}
                 {!loading && (
                   <button 
-                    onClick={() => setFile(null)}
-                    className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full shadow-lg z-20"
+                    onClick={() => setFile(null)} 
+                    className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full shadow-lg transition-transform hover:scale-110"
                   >
-                    <X size={18} />
+                    <RotateCcw size={18} />
                   </button>
                 )}
               </div>
-
               <button 
-                onClick={handleUpload}
-                disabled={loading}
-                className="w-full max-w-sm bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-bold shadow-lg disabled:bg-gray-400 flex items-center justify-center gap-2 transition-all"
+                onClick={handleUpload} 
+                disabled={loading} 
+                className="w-full max-w-sm bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-xl shadow-blue-100 disabled:bg-gray-400"
               >
-                {loading ? <><Loader2 className="animate-spin" /> מנתח...</> : <>סרוק עכשיו</>}
+                {loading ? <><Loader2 className="animate-spin" /> מנתח ב-AI...</> : <>בצע סריקת מחירים</>}
               </button>
             </div>
           )}
         </div>
       ) : (
-        /* תוצאות הסריקה (נשאר זהה) */
+        /* תוצאות הסריקה והעריכה */
         <div className="space-y-6 animate-in fade-in duration-500">
-           {/* ... החלק של הצגת המוצרים והעריכה ... */}
            <div className="bg-green-50 p-3 rounded-xl border border-green-200 text-green-700 font-bold text-center text-sm sm:text-base">
              ✅ הסריקה הושלמה!
            </div>
